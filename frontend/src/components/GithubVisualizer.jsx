@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { ChevronRight, ChevronDown, Folder, FileText, Github, Loader, Copy, Check, Star, GitFork } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronRight, Folder, FileText, Github, Loader, Copy, Check, Star, GitFork } from 'lucide-react';
 
 const GithubVisualizer = () => {
     const [url, setUrl] = useState('');
@@ -8,9 +8,39 @@ const GithubVisualizer = () => {
     const [repoData, setRepoData] = useState(null);
     const [expandedNodes, setExpandedNodes] = useState(new Set(['root']));
     const [copied, setCopied] = useState(false);
+    const [backendStatus, setBackendStatus] = useState('checking');
+    const API_BASE_URL = 'https://gitnest-185c.onrender.com/api';
+
+    // Function to check backend health
+    const checkBackendHealth = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/health`);
+            if (response.ok) {
+                setBackendStatus('ready');
+            } else {
+                setBackendStatus('unavailable');
+                setTimeout(checkBackendHealth, 5000); // Retry every 5 seconds
+            }
+        } catch (error) {
+            setBackendStatus('starting');
+            setTimeout(checkBackendHealth, 5000); // Retry every 5 seconds
+        }
+    };
+
+    // Check backend health on component mount
+    useEffect(() => {
+        checkBackendHealth();
+    }, []);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Check if backend is ready
+        if (backendStatus !== 'ready') {
+            setError('Backend is still starting up. Please wait a moment and try again.');
+            return;
+        }
+
         setLoading(true);
         setError('');
 
@@ -22,7 +52,7 @@ const GithubVisualizer = () => {
                 normalizedUrl = `${normalizedUrl}/tree/main`;
             }
 
-            const response = await fetch('https://gitnest-185c.onrender.com/api/structure', {
+            const response = await fetch(`${API_BASE_URL}/structure`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -35,7 +65,7 @@ const GithubVisualizer = () => {
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.detail || 'Failed to fetch repository structure');
+                new Error(error.detail || 'Failed to fetch repository structure');
             }
 
             const data = await response.json();
@@ -126,6 +156,30 @@ const GithubVisualizer = () => {
         );
     };
 
+    // Backend status banner component
+    const BackendStatusBanner = () => {
+        if (backendStatus === 'ready') return null;
+
+        const statusMessages = {
+            checking: 'Checking backend status...',
+            starting: 'Backend is starting up (this may take about a minute)...',
+            unavailable: 'Backend service is currently unavailable. Retrying...'
+        };
+
+        const statusColors = {
+            checking: 'bg-blue-50 text-blue-700 border-blue-200',
+            starting: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+            unavailable: 'bg-red-50 text-red-700 border-red-200'
+        };
+
+        return (
+            <div className={`p-4 ${statusColors[backendStatus]} border rounded-lg mb-4 flex items-center justify-center space-x-2`}>
+                <Loader className="animate-spin" size={18} />
+                <span>{statusMessages[backendStatus]}</span>
+            </div>
+        );
+    };
+
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="max-w-6xl mx-auto p-6 space-y-8">
@@ -139,6 +193,9 @@ const GithubVisualizer = () => {
                     </p>
                 </div>
 
+                {/* Backend Status Banner */}
+                <BackendStatusBanner />
+
                 {/* Search Form */}
                 <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
                     <div className="flex gap-4 p-4 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -149,11 +206,12 @@ const GithubVisualizer = () => {
                                 placeholder="https://github.com/username/repository"
                                 value={url}
                                 onChange={(e) => setUrl(e.target.value)}
+                                disabled={backendStatus !== 'ready'}
                             />
                         </div>
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || backendStatus !== 'ready'}
                             className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center gap-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                         >
                             {loading ? (
