@@ -22,7 +22,7 @@ const GithubVisualizer = () => {
                 normalizedUrl = `${normalizedUrl}/tree/main`;
             }
 
-            const response = await fetch('http://localhost:8000/api/structure', {
+            const response = await fetch('https://gitnest-185c.onrender.com/api/structure', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

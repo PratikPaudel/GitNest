@@ -17,7 +17,10 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite's default port
+    allow_origins=[
+        "http://localhost:5173",  # Local development
+        "https://git-nest-pratikpaudels-projects.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,13 +31,12 @@ app.include_router(router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
-
-    port = int(os.getenv("BACKEND_PORT", 8000))
-    host = os.getenv("BACKEND_HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
 
     uvicorn.run(
         "main:app",
         host=host,
         port=port,
-        reload=True  # Enable auto-reload during development
+        reload=True
     )
