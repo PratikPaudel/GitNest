@@ -26,7 +26,10 @@ const GithubVisualizer = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json',
                 },
+                mode: 'cors',
+                credentials: 'omit',
                 body: JSON.stringify({ url: normalizedUrl }),
             });
 
