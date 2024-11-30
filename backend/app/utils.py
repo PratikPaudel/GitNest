@@ -90,7 +90,7 @@ def get_repo_info(repo) -> RepoInfo:
 
 def get_github_client() -> Github:
     """Get authenticated GitHub client."""
-    token = "GITHUB_TOKEN"  # GitHub token environment variable
+    token = os.getenv("GITHUB_TOKEN")  # GitHub token environment variable
     if not token:
         raise ValueError("GitHub token not found in environment variables")
     return Github(token)
