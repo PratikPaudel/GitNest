@@ -6,6 +6,23 @@ from typing import Optional
 
 router = APIRouter()
 
+@router.get("/health")
+async def health_check():
+    """Check if the API is running."""
+    print("[DEBUG] Health check endpoint called")  
+    try:
+        g = get_github_client()
+        print("[DEBUG] GitHub client initialized successfully") 
+        return {
+            "status": "ok",
+            "message": "API is running and GitHub client is initialized"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+        
 @router.post("/structure", response_model=RepoResponse)
 async def get_repository_structure(repo_url: RepoURL):
     """Get the structure of a GitHub repository."""
