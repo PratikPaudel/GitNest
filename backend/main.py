@@ -20,7 +20,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",  # Local development
         "https://git-nest-pratikpaudels-projects.vercel.app",
-        "https://git-nest.vercel.app/"
+        "https://git-nest.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
