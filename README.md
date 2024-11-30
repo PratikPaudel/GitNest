@@ -6,7 +6,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/pratikpaudel/gitnest.svg)](https://github.com/pratikpaudel/gitnest/stargazers)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![GitNest Demo](demo.gif)
+![GitNest Demo](gitNest-demo.gif)
 
 ## 🌟 Features
 
