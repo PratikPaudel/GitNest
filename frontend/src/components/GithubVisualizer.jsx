@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Folder, FileText, Github, Loader, Copy, Check, Star, GitFork } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FileText, Github, Loader, Copy, Check, Star, GitFork } from 'lucide-react';
 
 const GithubVisualizer = () => {
     const [url, setUrl] = useState('');
@@ -35,12 +35,6 @@ const GithubVisualizer = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Check if backend is ready
-        if (backendStatus !== 'ready') {
-            setError('Backend is still starting up. Please wait a moment and try again.');
-            return;
-        }
-
         setLoading(true);
         setError('');
 
@@ -65,7 +59,7 @@ const GithubVisualizer = () => {
 
             if (!response.ok) {
                 const error = await response.json();
-                new Error(error.detail || 'Failed to fetch repository structure');
+                throw new Error(error.detail || 'Failed to fetch repository structure');
             }
 
             const data = await response.json();
@@ -206,12 +200,11 @@ const GithubVisualizer = () => {
                                 placeholder="https://github.com/username/repository"
                                 value={url}
                                 onChange={(e) => setUrl(e.target.value)}
-                                disabled={backendStatus !== 'ready'}
                             />
                         </div>
                         <button
                             type="submit"
-                            disabled={loading || backendStatus !== 'ready'}
+                            disabled={loading}
                             className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center gap-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                         >
                             {loading ? (
