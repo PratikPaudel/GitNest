@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FileText, Github, Loader, Copy, Check, Star, GitFork } from 'lucide-react';
+import {getApiBaseUrl} from "../config.js";
+import TextExport from './TextExport';
 
 const GithubVisualizer = () => {
     const [url, setUrl] = useState('');
@@ -9,7 +11,8 @@ const GithubVisualizer = () => {
     const [expandedNodes, setExpandedNodes] = useState(new Set(['root']));
     const [copied, setCopied] = useState(false);
     const [backendStatus, setBackendStatus] = useState('checking');
-    const API_BASE_URL = 'https://gitnest-185c.onrender.com/api';
+    const API_BASE_URL = getApiBaseUrl();
+    const [activeTab, setActiveTab] = useState('tree');
 
     // Function to check backend health
     const checkBackendHealth = async () => {
@@ -246,18 +249,18 @@ const GithubVisualizer = () => {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-2">
-                                        <Github size={24} className="text-slate-700" />
+                                        <Github size={24} className="text-slate-700"/>
                                         <h2 className="text-xl font-semibold text-slate-900">
                                             {repoData.repo_info.name}
                                         </h2>
                                     </div>
                                     <div className="flex items-center gap-4 text-slate-600">
                                         <div className="flex items-center gap-1">
-                                            <Star size={16} className="text-yellow-500" />
+                                            <Star size={16} className="text-yellow-500"/>
                                             <span>{repoData.repo_info.stars.toLocaleString()}</span>
                                         </div>
                                         <div className="flex items-center gap-1">
-                                            <GitFork size={16} className="text-blue-500" />
+                                            <GitFork size={16} className="text-blue-500"/>
                                             <span>{repoData.repo_info.forks.toLocaleString()}</span>
                                         </div>
                                     </div>
@@ -268,24 +271,59 @@ const GithubVisualizer = () => {
                                 >
                                     {copied ? (
                                         <>
-                                            <Check size={16} className="mr-1.5" />
+                                            <Check size={16} className="mr-1.5"/>
                                             <span>Copied!</span>
                                         </>
                                     ) : (
                                         <>
-                                            <Copy size={16} className="mr-1.5" />
+                                            <Copy size={16} className="mr-1.5"/>
                                             <span>Copy Structure</span>
                                         </>
                                     )}
                                 </button>
                             </div>
+
                             {repoData.repo_info.description && (
                                 <p className="mt-2 text-slate-600">
                                     {repoData.repo_info.description}
                                 </p>
                             )}
                         </div>
+                        <div className="border-b border-slate-200">
+                            <div className="flex">
+                                <button
+                                    className={`px-4 py-2 font-medium ${
+                                        activeTab === 'tree'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    onClick={() => setActiveTab('tree')}
+                                >
+                                    Tree View
+                                </button>
+                                <button
+                                    className={`px-4 py-2 font-medium ${
+                                        activeTab === 'text'
+                                            ? 'text-blue-600 border-b-2 border-blue-600'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    onClick={() => setActiveTab('text')}
+                                >
+                                    Text Export
+                                </button>
+                            </div>
+                        </div>
 
+                        {/* Content */}
+                        <div className="p-4">
+                            {activeTab === 'tree' ? (
+                                <div className="font-mono text-sm">
+                                    {repoData.structure.map(node => renderNode(node, ''))}
+                                </div>
+                            ) : (
+                                <TextExport repoData={repoData} url={url} />
+                            )}
+                        </div>
                         {/* Repository Structure */}
                         <div className="p-4 font-mono text-sm">
                             {repoData.structure.map(node => renderNode(node, ''))}
@@ -301,7 +339,8 @@ const GithubVisualizer = () => {
                         fill="currentColor"
                         viewBox="0 0 24 24"
                     >
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                        <path
+                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
                     </svg>
                     <span>by</span>
                     <a
