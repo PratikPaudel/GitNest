@@ -1,8 +1,9 @@
 ﻿from fastapi import APIRouter, HTTPException
 from github import GithubException
-from .models import RepoURL, RepoResponse
+from .models import RepoURL, RepoResponse, TextContentResponse, TextContentMetadata
 from .utils import parse_github_url, get_repo_structure, get_repo_info, get_github_client
 from typing import Optional
+import base64
 
 router = APIRouter()
 
@@ -115,3 +116,119 @@ async def get_repository_structure(repo_url: RepoURL):
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/text-content", response_model=TextContentResponse)
+async def get_repository_text(repo_url: RepoURL):
+    """Get the text content of all files in a repository."""
+    try:
+        print(f"[DEBUG] Processing text-content request for URL: {repo_url.url}")
+        owner, repo_name, branch = parse_github_url(repo_url.url)
+        print(f"[DEBUG] Parsed URL - owner: {owner}, repo: {repo_name}, branch: {branch}")
+
+        g = get_github_client()
+        repo = g.get_repo(f"{owner}/{repo_name}")
+        print(f"[DEBUG] Successfully fetched repo object")
+
+        contents = []
+        skipped_files = []
+        total_size = 0
+
+        def process_contents(path=""):
+            nonlocal total_size
+            try:
+                print(f"[DEBUG] Fetching contents for path: {path}")
+                items = repo.get_contents(path, ref=branch or repo.default_branch)
+                if not isinstance(items, list):
+                    items = [items]
+
+                for item in items:
+                    try:
+                        if item.type == "file":
+                            print(f"[DEBUG] Processing file: {item.path}")
+                            # Skip files in excluded directories
+                            if any(excluded in item.path.lower() for excluded in ['node_modules', '.git', 'dist', 'build', 'venv']):
+                                print(f"[DEBUG] Skipping excluded directory file: {item.path}")
+                                skipped_files.append(f"{item.path} (excluded directory)")
+                                continue
+
+                            # Skip files larger than 100KB
+                            if item.size > 100 * 1024:
+                                print(f"[DEBUG] Skipping large file: {item.path} ({item.size/1024:.1f}KB)")
+                                skipped_files.append(f"{item.path} (too large: {item.size/1024:.1f}KB)")
+                                continue
+
+                            # Skip binary files
+                            if item.path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.pdf', '.zip')):
+                                print(f"[DEBUG] Skipping binary file: {item.path}")
+                                skipped_files.append(f"{item.path} (binary file)")
+                                continue
+
+                            try:
+                                file_content = base64.b64decode(item.content).decode('utf-8')
+                                total_size += len(file_content)
+                                contents.append(
+                                    f"\n{'='*80}\n"
+                                    f"File: {item.path}\n"
+                                    f"Size: {item.size/1024:.2f}KB\n"
+                                    f"{'='*80}\n\n"
+                                    f"{file_content}\n"
+                                )
+                            except UnicodeDecodeError as e:
+                                print(f"[DEBUG] Unicode decode error for {item.path}: {str(e)}")
+                                skipped_files.append(f"{item.path} (encoding error)")
+                            except Exception as e:
+                                print(f"[DEBUG] Error processing file {item.path}: {str(e)}")
+                                skipped_files.append(f"{item.path} (Error: {str(e)})")
+
+                        elif item.type == "dir" and not any(excluded in item.path.lower() for excluded in ['node_modules', '.git', 'dist', 'build', 'venv']):
+                            print(f"[DEBUG] Processing directory: {item.path}")
+                            process_contents(item.path)
+
+                    except Exception as e:
+                        print(f"[DEBUG] Error processing item {item.path if hasattr(item, 'path') else 'unknown'}: {str(e)}")
+                        continue
+
+            except Exception as e:
+                print(f"[DEBUG] Error in process_contents for path {path}: {str(e)}")
+                raise
+
+        try:
+            process_contents()
+            print("[DEBUG] Finished processing all contents")
+        except Exception as e:
+            print(f"[DEBUG] Error during content processing: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error processing repository contents: {str(e)}")
+
+        # Prepare header with repository information
+        header = (
+                f"Repository: {owner}/{repo_name}\n"
+                f"Branch: {branch or repo.default_branch}\n"
+                f"Total files processed: {len(contents)}\n"
+                f"Total size: {total_size/1024:.2f}KB\n"
+                f"\nSkipped files ({len(skipped_files)}):\n"
+                + "\n".join(f"- {file}" for file in skipped_files)
+                + "\n\n"
+        )
+
+        return TextContentResponse(
+            status="success",
+            content=header + "".join(contents),
+            metadata=TextContentMetadata(
+                total_files=len(contents),
+                skipped_files=len(skipped_files),
+                total_size=total_size
+            )
+        )
+
+    except GithubException as e:
+        print(f"[DEBUG] GitHub API error: {str(e)}")
+        raise HTTPException(
+            status_code=e.status,
+            detail=f"GitHub API error: {str(e.data.get('message', str(e)))}"
+        )
+    except Exception as e:
+        print(f"[DEBUG] Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
