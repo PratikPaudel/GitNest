@@ -1,6 +1,15 @@
-﻿from pydantic import BaseModel, HttpUrl
-from typing import List, Optional
+﻿from typing import List, Optional
+from pydantic import BaseModel
 
+class TextContentMetadata(BaseModel):
+    total_files: int
+    skipped_files: int
+    total_size: int
+
+class TextContentResponse(BaseModel):
+    status: str
+    content: str
+    metadata: TextContentMetadata
 class RepoURL(BaseModel):
     url: str
 
