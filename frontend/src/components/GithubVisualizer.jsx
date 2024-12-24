@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Folder, FileText, Github, Loader, Copy, Check, Star, GitFork } from 'lucide-react';
-import {getApiBaseUrl} from "../config.js";
+import { ChevronRight, FileText, Github, Loader, Copy, Check, Star, GitFork, Folder } from 'lucide-react';
+import FilterControls from './filters/FilterControls';
 import TextExport from './TextExport';
+import { getApiBaseUrl } from "../config.js";
 
 const GithubVisualizer = () => {
     const [url, setUrl] = useState('');
@@ -11,8 +12,21 @@ const GithubVisualizer = () => {
     const [expandedNodes, setExpandedNodes] = useState(new Set(['root']));
     const [copied, setCopied] = useState(false);
     const [backendStatus, setBackendStatus] = useState('checking');
-    const API_BASE_URL = getApiBaseUrl();
     const [activeTab, setActiveTab] = useState('tree');
+    const [selectedNodes, setSelectedNodes] = useState(new Set());
+    const [filteredStructure, setFilteredStructure] = useState(null);
+    const [activeFilters, setActiveFilters] = useState({
+        extensions: [],
+        ignorePatterns: {
+            'node_modules/': true,
+            '.git/': true,
+            'build/': true,
+            'dist/': true,
+            '.vscode/': true,
+            '.idea/': true
+        }
+    });
+    const API_BASE_URL = getApiBaseUrl();
 
     // Function to check backend health
     const checkBackendHealth = async () => {
@@ -35,9 +49,152 @@ const GithubVisualizer = () => {
         checkBackendHealth();
     }, []);
 
+    // Apply filters whenever activeFilters or repoData changes
+    useEffect(() => {
+        if (!repoData) return;
+
+        const applyFilters = (nodes) => {
+            return nodes.filter(node => {
+                // Check ignore patterns first
+                const shouldIgnore = Object.entries(activeFilters.ignorePatterns)
+                    .some(([pattern, enabled]) => enabled && node.path.includes(pattern));
+                if (shouldIgnore) return false;
+
+                // If it's a directory, process its children
+                if (node.type === 'directory') {
+                    const filteredChildren = applyFilters(node.children || []);
+                    node.children = filteredChildren;
+                    return filteredChildren.length > 0; // Keep directory if it has visible children
+                }
+
+                // For files, check extensions
+                if (activeFilters.extensions.length > 0) {
+                    const ext = node.name.split('.').pop();
+                    return activeFilters.extensions.includes(ext);
+                }
+
+                return true;
+            });
+        };
+
+        const filtered = applyFilters([...repoData.structure]);
+        setFilteredStructure(filtered);
+    }, [activeFilters, repoData]);
+
+    const handleFiltersChange = (newFilters) => {
+        setActiveFilters(newFilters);
+    };
+
+    const handleNodeSelect = (nodePath, isSelected) => {
+        setSelectedNodes(prev => {
+            const newSelection = new Set(prev);
+            if (isSelected) {
+                newSelection.add(nodePath);
+            } else {
+                newSelection.delete(nodePath);
+            }
+            return newSelection;
+        });
+    };
+
+    const toggleNode = (nodePath) => {
+        const newExpanded = new Set(expandedNodes);
+        if (newExpanded.has(nodePath)) {
+            newExpanded.delete(nodePath);
+        } else {
+            newExpanded.add(nodePath);
+        }
+        setExpandedNodes(newExpanded);
+    };
+
+    // Modified renderNode function with checkboxes and file sizes
+    const renderNode = (node, path = '') => {
+        const fullPath = `${path}/${node.name}`;
+        const isExpanded = expandedNodes.has(fullPath);
+        const level = (fullPath.match(/\//g) || []).length - 1;
+        const paddingLeft = `${level * 1.5}rem`;
+        const isSelected = selectedNodes.has(fullPath);
+
+        return (
+            <div key={fullPath} className="transition-all duration-200">
+                <div
+                    className="flex items-center py-1.5 hover:bg-slate-50 cursor-pointer rounded transition-colors duration-150"
+                    style={{ paddingLeft }}
+                >
+                    {/* Checkbox */}
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => handleNodeSelect(fullPath, e.target.checked)}
+                        className="mr-2 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+
+                    {/* Expand/Collapse arrow for directories */}
+                    <span
+                        className="w-4 h-4 flex items-center justify-center"
+                        onClick={() => node.type === 'directory' && toggleNode(fullPath)}
+                    >
+                        {node.type === 'directory' && (
+                            <ChevronRight
+                                size={16}
+                                className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                            />
+                        )}
+                    </span>
+                    
+                    {node.type === 'directory' ? (
+                        <Folder size={16} className="mr-2 text-blue-600" />
+                    ) : (
+                        <FileText size={16} className="mr-2 text-slate-500" />
+                    )}
+
+                    {/* Name and size */}
+                    <span className="flex-1 select-none text-slate-700">{node.name}</span>
+                    {node.type === 'file' && node.size && (
+                        <span className="text-sm text-slate-500 mr-4">
+                            {(node.size / 1024).toFixed(1)} KB
+                        </span>
+                    )}
+                </div>
+
+                {/* Render children for directories */}
+                {node.type === 'directory' && node.children && (
+                    <div
+                        className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}
+                    >
+                        {node.children.map(child => renderNode(child, fullPath))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Backend status banner component
+    const BackendStatusBanner = () => {
+        if (backendStatus === 'ready') return null;
+
+        const statusMessages = {
+            checking: 'Checking backend status...',
+            starting: 'Backend is starting up (this may take about a minute)...',
+            unavailable: 'Backend service is currently unavailable. Retrying...'
+        };
+
+        const statusColors = {
+            checking: 'bg-blue-50 text-blue-700 border-blue-200',
+            starting: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+            unavailable: 'bg-red-50 text-red-700 border-red-200'
+        };
+
+        return (
+            <div className={`p-4 ${statusColors[backendStatus]} border rounded-lg mb-4 flex items-center justify-center space-x-2`}>
+                <Loader className="animate-spin" size={18} />
+                <span>{statusMessages[backendStatus]}</span>
+            </div>
+        );
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         setLoading(true);
         setError('');
 
@@ -75,116 +232,12 @@ const GithubVisualizer = () => {
         }
     };
 
-    const toggleNode = (nodePath) => {
-        const newExpanded = new Set(expandedNodes);
-        if (newExpanded.has(nodePath)) {
-            newExpanded.delete(nodePath);
-        } else {
-            newExpanded.add(nodePath);
-        }
-        setExpandedNodes(newExpanded);
-    };
-
-    const generateTextStructure = (nodes, level = 0) => {
-        return nodes.map(node => {
-            const indent = '  '.repeat(level);
-            let result = `${indent}${node.name}${node.type === 'directory' ? '/' : ''}\n`;
-
-            if (node.type === 'directory' && node.children) {
-                result += generateTextStructure(node.children, level + 1);
-            }
-
-            return result;
-        }).join('');
-    };
-
-    const handleCopyStructure = () => {
-        if (!repoData) return;
-
-        const textStructure = generateTextStructure(repoData.structure);
-        navigator.clipboard.writeText(textStructure);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    const renderNode = (node, path = '') => {
-        const fullPath = `${path}/${node.name}`;
-        const isExpanded = expandedNodes.has(fullPath);
-        const level = (fullPath.match(/\//g) || []).length - 1;
-        const paddingLeft = `${level * 1.5}rem`;
-
-        return (
-            <div key={fullPath} className="transition-all duration-200">
-                <div
-                    className={`flex items-center py-1.5 hover:bg-slate-50 cursor-pointer rounded transition-colors duration-150 ${
-                        node.type === 'directory' ? 'font-medium' : ''
-                    }`}
-                    style={{ paddingLeft }}
-                    onClick={() => node.type === 'directory' && toggleNode(fullPath)}
-                >
-                    <span className="w-4 h-4 flex items-center justify-center transition-transform duration-200">
-                        {node.type === 'directory' && (
-                            <ChevronRight
-                                size={16}
-                                className={`transform transition-transform duration-200 ${
-                                    isExpanded ? 'rotate-90' : ''
-                                }`}
-                            />
-                        )}
-                    </span>
-                    {node.type === 'directory' ? (
-                        <Folder size={16} className="mr-2 text-blue-600" />
-                    ) : (
-                        <FileText size={16} className="mr-2 text-slate-500" />
-                    )}
-                    <span className="select-none text-slate-700">{node.name}</span>
-                </div>
-
-                {node.type === 'directory' && node.children && (
-                    <div
-                        className={`overflow-hidden transition-all duration-200 ${
-                            isExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
-                        }`}
-                    >
-                        {node.children.map(child => renderNode(child, fullPath))}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    // Backend status banner component
-    const BackendStatusBanner = () => {
-        if (backendStatus === 'ready') return null;
-
-        const statusMessages = {
-            checking: 'Checking backend status...',
-            starting: 'Backend is starting up (this may take about a minute)...',
-            unavailable: 'Backend service is currently unavailable. Retrying...'
-        };
-
-        const statusColors = {
-            checking: 'bg-blue-50 text-blue-700 border-blue-200',
-            starting: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-            unavailable: 'bg-red-50 text-red-700 border-red-200'
-        };
-
-        return (
-            <div className={`p-4 ${statusColors[backendStatus]} border rounded-lg mb-4 flex items-center justify-center space-x-2`}>
-                <Loader className="animate-spin" size={18} />
-                <span>{statusMessages[backendStatus]}</span>
-            </div>
-        );
-    };
-
     return (
         <div className="min-h-screen bg-slate-50">
             <div className="max-w-6xl mx-auto p-6 space-y-8">
                 {/* Header */}
                 <div className="text-center space-y-4 py-8">
-                    <h1 className="text-4xl font-bold text-slate-900">
-                        GitHub Repository Visualizer
-                    </h1>
+                    <h1 className="text-4xl font-bold text-slate-900">GitHub Repository Visualizer</h1>
                     <p className="text-slate-600 text-lg max-w-2xl mx-auto">
                         Explore and visualize GitHub repository structures with an interactive tree view
                     </p>
@@ -199,114 +252,61 @@ const GithubVisualizer = () => {
                         <div className="flex-1">
                             <input
                                 type="text"
-                                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-                                placeholder="https://github.com/username/repository"
+                                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 value={url}
                                 onChange={(e) => setUrl(e.target.value)}
+                                placeholder="Enter GitHub repository URL"
                             />
                         </div>
                         <button
                             type="submit"
+                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg flex items-center space-x-2 hover:bg-blue-700"
                             disabled={loading}
-                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 flex items-center gap-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                         >
-                            {loading ? (
-                                <>
-                                    <Loader className="animate-spin" size={18} />
-                                    <span>Loading...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Github size={18} />
-                                    <span>Visualize</span>
-                                </>
-                            )}
+                            {loading ? <Loader className="animate-spin" size={18} /> : <Github />}
+                            <span>Fetch</span>
                         </button>
                     </div>
+                    {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
                 </form>
-
-                {/* Error Message */}
-                {error && (
-                    <div className="max-w-3xl mx-auto">
-                        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-                            <div className="text-red-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10"/>
-                                    <line x1="12" y1="8" x2="12" y2="12"/>
-                                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                                </svg>
-                            </div>
-                            <span className="text-red-700">{error}</span>
-                        </div>
-                    </div>
-                )}
 
                 {/* Repository Visualization */}
                 {repoData && (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        {/* Repository Header */}
-                        <div className="p-4 border-b border-slate-200 bg-slate-50">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2">
-                                        <Github size={24} className="text-slate-700"/>
-                                        <h2 className="text-xl font-semibold text-slate-900">
-                                            {repoData.repo_info.name}
-                                        </h2>
-                                    </div>
-                                    <div className="flex items-center gap-4 text-slate-600">
-                                        <div className="flex items-center gap-1">
-                                            <Star size={16} className="text-yellow-500"/>
-                                            <span>{repoData.repo_info.stars.toLocaleString()}</span>
+                        {/* Repo Header */}
+                        <div className="p-6 border-b border-slate-200">
+                            <div className="flex items-center gap-4">
+                                <Github size={40} />
+                                <div className="text-sm text-slate-700">
+                                    <h3 className="text-xl font-semibold">{repoData.name}</h3>
+                                    <p>{repoData.description}</p>
+                                    <div className="flex gap-3 mt-2">
+                                        <div className="flex items-center">
+                                            <Star size={16} className="mr-1" />
+                                            <span>{repoData.stars}</span>
                                         </div>
-                                        <div className="flex items-center gap-1">
-                                            <GitFork size={16} className="text-blue-500"/>
-                                            <span>{repoData.repo_info.forks.toLocaleString()}</span>
+                                        <div className="flex items-center">
+                                            <GitFork size={16} className="mr-1" />
+                                            <span>{repoData.forks}</span>
                                         </div>
                                     </div>
                                 </div>
-                                <button
-                                    className="flex items-center px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                    onClick={handleCopyStructure}
-                                >
-                                    {copied ? (
-                                        <>
-                                            <Check size={16} className="mr-1.5"/>
-                                            <span>Copied!</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Copy size={16} className="mr-1.5"/>
-                                            <span>Copy Structure</span>
-                                        </>
-                                    )}
-                                </button>
                             </div>
-
-                            {repoData.repo_info.description && (
-                                <p className="mt-2 text-slate-600">
-                                    {repoData.repo_info.description}
-                                </p>
-                            )}
                         </div>
+
+                        {/* Tab Switch */}
                         <div className="border-b border-slate-200">
-                            <div className="flex">
+                            <div className="flex gap-8 text-sm font-medium">
                                 <button
-                                    className={`px-4 py-2 font-medium ${
-                                        activeTab === 'tree'
-                                            ? 'text-blue-600 border-b-2 border-blue-600'
-                                            : 'text-slate-600 hover:text-slate-900'
-                                    }`}
+                                    type="button"
+                                    className={`py-4 px-6 ${activeTab === 'tree' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
                                     onClick={() => setActiveTab('tree')}
                                 >
                                     Tree View
                                 </button>
                                 <button
-                                    className={`px-4 py-2 font-medium ${
-                                        activeTab === 'text'
-                                            ? 'text-blue-600 border-b-2 border-blue-600'
-                                            : 'text-slate-600 hover:text-slate-900'
-                                    }`}
+                                    type="button"
+                                    className={`py-4 px-6 ${activeTab === 'text' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500'}`}
                                     onClick={() => setActiveTab('text')}
                                 >
                                     Text Export
@@ -315,52 +315,34 @@ const GithubVisualizer = () => {
                         </div>
 
                         {/* Content */}
-                        <div className="p-4">
-                            {activeTab === 'tree' ? (
-                                <div className="font-mono text-sm">
-                                    {repoData.structure.map(node => renderNode(node, ''))}
-                                </div>
-                            ) : (
+                        <div>
+                            {activeTab === 'tree' && (
+                                <>
+                                    <FilterControls
+                                        repoData={repoData}
+                                        onFiltersChange={handleFiltersChange}
+                                    />
+                                    <div className="p-4 font-mono text-sm">
+                                        {(filteredStructure || []).map(node => renderNode(node, ''))}
+                                    </div>
+                                </>
+                            )}
+                            {activeTab === 'text' && (
                                 <TextExport repoData={repoData} url={url} />
                             )}
                         </div>
-                        {/* Repository Structure */}
-                        <div className="p-4 font-mono text-sm">
-                            {repoData.structure.map(node => renderNode(node, ''))}
-                        </div>
                     </div>
                 )}
-            </div>
-            <div className="text-center py-8 text-slate-600">
-                <div className="flex items-center justify-center gap-1 mb-2">
-                    <span>Made with</span>
-                    <svg
-                        className="w-5 h-5 text-red-500"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                    </svg>
-                    <span>by</span>
-                    <a
-                        href="https://github.com/pratikpaudel"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                        pratikpaudel
-                    </a>
-                </div>
-                <div>
-                    <a
-                        href="https://github.com/pratikpaudel/gitnest"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
-                    >
-                        Find this useful? <Star size={14} className="text-yellow-500" /> Star us on GitHub
-                    </a>
+
+                {/* Footer */}
+                <div className="text-center mt-12 py-6">
+                    <p className="text-sm text-slate-600">
+                        Made with ❤️ by pratikpaudel. <br />
+                        Star this project on{' '}
+                        <a href="https://github.com/pratikpaudel/gitNest" target="_blank" rel="noopener noreferrer" className="text-blue-500">
+                            GitHub
+                        </a>
+                    </p>
                 </div>
             </div>
         </div>
