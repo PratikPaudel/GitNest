@@ -1,6 +1,6 @@
 # GitNest 🌳
 
-> Visualize GitHub repository structures with an elegant, interactive tree view.
+> Visualize GitHub repository structures with an elegant, interactive tree view. 
 
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://git-nest.vercel.app)
 [![GitHub stars](https://img.shields.io/github/stars/pratikpaudel/gitnest.svg)](https://github.com/pratikpaudel/gitnest/stargazers)
